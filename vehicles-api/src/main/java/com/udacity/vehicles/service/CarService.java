@@ -1,7 +1,10 @@
 package com.udacity.vehicles.service;
 
 import com.udacity.vehicles.client.maps.Address;
+import com.udacity.vehicles.client.maps.MapsClient;
 import com.udacity.vehicles.client.prices.Price;
+import com.udacity.vehicles.client.prices.PriceClient;
+import com.udacity.vehicles.domain.Location;
 import com.udacity.vehicles.domain.car.Car;
 import com.udacity.vehicles.domain.car.CarRepository;
 
@@ -10,10 +13,7 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 /**
@@ -25,20 +25,18 @@ import reactor.core.publisher.Mono;
 public class CarService {
     private Logger logger = LoggerFactory.getLogger(CarService.class);
     private final CarRepository repository;
-    private final WebClient webClientMaps;
-    private final WebClient webClientPricing;
+    private final MapsClient mapsClient;
+    private final PriceClient priceClient;
 
 
-
-    public CarService(CarRepository repository, @Qualifier("maps") WebClient webClientMaps,
-                      @Qualifier("pricing") WebClient webClientPricing) {
+    public CarService(CarRepository repository, MapsClient mapsClient, PriceClient priceClient) {
         /**
          * TODO: [DONE] Add the Maps and Pricing Web Clients you create
          *   in `VehiclesApiApplication` as arguments and set them here.
          */
         this.repository = repository;
-        this.webClientMaps = webClientMaps;
-        this.webClientPricing = webClientPricing;
+        this.mapsClient = mapsClient;
+        this.priceClient = priceClient;
     }
 
     /**
@@ -77,19 +75,8 @@ public class CarService {
          */
 
 
-        Mono<Price> priceMono = webClientPricing.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/services/price")
-                        .queryParam("vehicleId", vehicleId)
-                        .build())
-                .retrieve()
-                .bodyToMono(Price.class);
-
-        if (priceMono.blockOptional().isPresent()) {
-            Price price = priceMono.blockOptional().get();
-            logger.info("price fetched for id {}, is  {}", vehicleId, price.getPrice());
-            car.setPrice(price.getCurrency() + " " + price.getPrice());
-        }
+        String price = priceClient.getPrice(vehicleId);
+        car.setPrice(price);
 
 
         /**
@@ -101,25 +88,11 @@ public class CarService {
          * meaning the Maps service needs to be called each time for the address.
          */
 
-        Mono<Address> addressMono = webClientMaps.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/maps")
-                        .queryParam("lat", car.getLocation().getLat())
-                        .queryParam("lon", car.getLocation().getLon())
-                        .build())
-                .retrieve()
-                .bodyToMono(Address.class);
-
-
-        if (addressMono.blockOptional().isPresent()) {
-            Address address = addressMono.blockOptional().get();
-            logger.info("address fetched {}, is  {}", address.getAddress(), address.getCity());
-            car.getLocation().setAddress(address.getAddress());
-            car.getLocation().setCity(address.getCity());
-            car.getLocation().setState(address.getState());
-            car.getLocation().setZip(address.getZip());
-        }
-
+        Location address = mapsClient.getAddress(car.getLocation());
+        car.getLocation().setAddress(address.getAddress() == null ? "" : address.getAddress());
+        car.getLocation().setCity(address.getCity() == null ? "" : address.getCity());
+        car.getLocation().setState(address.getState() == null ? "" : address.getState());
+        car.getLocation().setZip(address.getZip() == null ? "" : address.getZip());
 
         return car;
     }
@@ -134,6 +107,7 @@ public class CarService {
         if (car.getId() != null) {
             return repository.findById(car.getId())
                     .map(carToBeUpdated -> {
+                        carToBeUpdated.setCondition(car.getCondition());
                         carToBeUpdated.setDetails(car.getDetails());
                         carToBeUpdated.setLocation(car.getLocation());
                         return repository.save(carToBeUpdated);
@@ -153,11 +127,7 @@ public class CarService {
          * TODO: [DONE] Find the car by ID from the `repository` if it exists.
          *   If it does not exist, throw a CarNotFoundException
          */
-        Optional<Car> optionalCar = repository.findById(id);
-        if (optionalCar.isEmpty()) {
-            throw new CarNotFoundException();
-        }
-        Car car = optionalCar.get();
+        Car car = repository.findById(id).orElseThrow(CarNotFoundException::new);
         /**
          * TODO: [DONE] Delete the car from the repository.
          */

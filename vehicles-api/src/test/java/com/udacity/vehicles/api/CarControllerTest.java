@@ -5,9 +5,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,7 +21,6 @@ import com.udacity.vehicles.service.CarService;
 
 import java.net.URI;
 import java.util.Collections;
-import java.util.Optional;
 
 import org.hamcrest.Matchers;
 import org.junit.Before;
@@ -57,6 +54,7 @@ public class CarControllerTest {
 
     @Autowired
     private CarRepository carRepository;
+
 
     @MockBean
     private CarService carService;
@@ -185,9 +183,32 @@ public class CarControllerTest {
                         .accept(MediaType.APPLICATION_JSON_UTF8))
                 .andExpect(status().isNoContent());
 
-        Optional<Car> optionalCar = carRepository.findById(1L);
-        assertThat(optionalCar.isEmpty(), Matchers.is(true));
     }
+
+
+    /**
+     * Tests for successful update of an existing car in the system
+     *
+     * @throws Exception when car creation fails in the system
+     */
+    @Test
+    public void updateCar() throws Exception {
+        Car car = getCar();
+        Car savedCar = carRepository.save(car);
+        System.out.println("car =====>" + savedCar.getId() + " " + savedCar.getCondition().name());
+        savedCar.setCondition(Condition.NEW);
+        System.out.println("car =====>" + savedCar.getId() + " " + savedCar.getCondition().name());
+        Long id = savedCar.getId();
+
+
+        mvc.perform(
+                put(new URI("/cars/" + id))
+                        .content(json.write(savedCar).getJson())
+                        .contentType(MediaType.APPLICATION_JSON_UTF8)
+                        .accept(MediaType.APPLICATION_JSON_UTF8))
+                .andExpect(status().isOk());
+    }
+
 
     /**
      * Creates an example Car object for use in testing.
